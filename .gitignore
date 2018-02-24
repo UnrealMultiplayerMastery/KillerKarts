@@ -73,3 +73,7 @@ Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# include screenshots
+!Saved/Screenshots
+!Saved/Downloads
