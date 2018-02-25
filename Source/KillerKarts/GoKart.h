@@ -66,6 +66,12 @@ private:
 	float MaxDrivingForce = 10000;
 
 	FVector Velocity;
+
+	UPROPERTY(Replicated)
+	FVector ReplicatedLocation;
+
+	UPROPERTY(Replicated)
+	FRotator ReplicatedRotation;
 	
 	float Throttle;
 
