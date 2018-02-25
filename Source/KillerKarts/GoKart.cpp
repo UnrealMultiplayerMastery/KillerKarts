@@ -25,7 +25,7 @@ void AGoKart::BeginPlay()
 	
 	if (HasAuthority())
 	{
-		NetUpdateFrequency = 1;
+		NetUpdateFrequency = 10;
 	}
 }
 
@@ -33,6 +33,9 @@ void AGoKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifeti
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AGoKart, ReplicatedTransform);
+	DOREPLIFETIME(AGoKart, Velocity);
+	DOREPLIFETIME(AGoKart, Throttle);
+	DOREPLIFETIME(AGoKart, SteeringThrow);
 }
 
 FString GetEnumText(ENetRole Role)

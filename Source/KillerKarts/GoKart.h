@@ -65,6 +65,7 @@ private:
 	UPROPERTY(EditAnywhere)
 	float MaxDrivingForce = 10000;
 
+	UPROPERTY(Replicated)
 	FVector Velocity;
 
 	UPROPERTY(ReplicatedUsing=OnRep_ReplicatedTransform)
@@ -73,8 +74,10 @@ private:
 	UFUNCTION()
 	void OnRep_ReplicatedTransform();
 	
+	UPROPERTY(Replicated)
 	float Throttle;
 
+	UPROPERTY(Replicated)
 	float SteeringThrow;
 
 };
