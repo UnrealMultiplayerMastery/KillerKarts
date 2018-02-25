@@ -47,8 +47,76 @@ void UGoKartMovementReplicator::TickComponent(float DeltaTime, ELevelTick TickTy
 
 	if (GetOwnerRole() == ROLE_SimulatedProxy)
 	{
-		MovementComponent->SimulateMove(ServerState.LastMove);
+		//MovementComponent->SimulateMove(ServerState.LastMove);
+		ClientTick(DeltaTime);
 	}
+}
+
+void UGoKartMovementReplicator::ClientTick(float DeltaTime)
+{
+	ClientTimeSinceUpdate += DeltaTime;
+
+	if (ClientTimeBetweenLastUpdates < KINDA_SMALL_NUMBER) return;
+	if (MovementComponent == nullptr) return;
+
+	float LerpRatio = ClientTimeSinceUpdate / ClientTimeBetweenLastUpdates;
+	FHermiteCubicSpline Spline = CreateSpline();
+
+	InterpolateLocation(Spline, LerpRatio);
+	InterpolateVelocity(Spline, LerpRatio);
+	InterpolateRotation(LerpRatio);
+}
+
+FHermiteCubicSpline UGoKartMovementReplicator::CreateSpline()
+{
+	FHermiteCubicSpline Spline;
+	Spline.TargetLocation = ServerState.Transform.GetLocation();
+	Spline.StartLocation = ClientStartTransform.GetLocation();
+	Spline.StartDerivative = ClientStartVelocity * VelocityToDerivative();
+	Spline.TargetDerivative = ServerState.Velocity * VelocityToDerivative();
+	return Spline;
+}
+
+void UGoKartMovementReplicator::InterpolateLocation(const FHermiteCubicSpline & Spline, float LerpRatio)
+{
+	FVector NewLocation = Spline.InterpolateLocation(LerpRatio);
+	if (WorldRootTransform != nullptr)
+	{
+		WorldRootTransform->SetWorldLocation(NewLocation);
+	}
+	else
+	{
+		GetOwner()->SetActorLocation(NewLocation);
+	}
+}
+
+void UGoKartMovementReplicator::InterpolateVelocity(const FHermiteCubicSpline & Spline, float LerpRatio)
+{
+	FVector NewDerivative = Spline.InterpolateDerivative(LerpRatio);
+	FVector NewVelocity = NewDerivative / VelocityToDerivative();
+	MovementComponent->SetVelocity(NewVelocity);
+}
+
+void UGoKartMovementReplicator::InterpolateRotation(float LerpRatio)
+{
+	FQuat TargetRotation = ServerState.Transform.GetRotation();
+	FQuat StartRotation = ClientStartTransform.GetRotation();
+
+	FQuat NewRotation = FQuat::Slerp(StartRotation, TargetRotation, LerpRatio);
+
+	if (WorldRootTransform != nullptr)
+	{
+		WorldRootTransform->SetWorldRotation(NewRotation);
+	}
+	else
+	{
+		GetOwner()->SetActorRotation(NewRotation);
+	}
+}
+
+float UGoKartMovementReplicator::VelocityToDerivative()
+{
+	return ClientTimeBetweenLastUpdates * 100;
 }
 
 void UGoKartMovementReplicator::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const
@@ -81,6 +149,21 @@ void UGoKartMovementReplicator::UpdateServerState(const FGoKartMove & Move)
 
 void UGoKartMovementReplicator::OnRep_ServerState()
 {
+	switch (GetOwnerRole())
+	{
+	case ROLE_AutonomousProxy:
+		AutonomousProxy_OnRep_ServerState();
+		break;
+	case ROLE_SimulatedProxy:
+		SimulatedProxy_OnRep_ServerState();
+		break;
+	default:
+		break;
+	}
+}
+
+void UGoKartMovementReplicator::AutonomousProxy_OnRep_ServerState()
+{
 	if (MovementComponent == nullptr) return;
 
 	// Reset to server state
@@ -94,9 +177,33 @@ void UGoKartMovementReplicator::OnRep_ServerState()
 	}
 }
 
+void UGoKartMovementReplicator::SimulatedProxy_OnRep_ServerState()
+{
+	if (MovementComponent == nullptr) return;
+
+	ClientTimeBetweenLastUpdates = ClientTimeSinceUpdate;
+	ClientTimeSinceUpdate = 0;
+
+	if (WorldRootTransform != nullptr)
+	{
+		ClientStartTransform.SetLocation(WorldRootTransform->GetComponentLocation());
+		ClientStartTransform.SetRotation(WorldRootTransform->GetComponentQuat());
+	}
+	else
+	{
+		ClientStartTransform = GetOwner()->GetActorTransform();
+	}
+
+	ClientStartVelocity = MovementComponent->GetVelocity();
+
+	GetOwner()->SetActorTransform(ServerState.Transform);
+}
+
 void UGoKartMovementReplicator::Server_SendMove_Implementation(FGoKartMove Move)
 {
 	if (MovementComponent == nullptr) return;
+
+	ClientSimulatedTime += Move.DeltaTime;
 
 	MovementComponent->SimulateMove(Move);
 
@@ -110,5 +217,19 @@ void UGoKartMovementReplicator::Server_SendMove_Implementation(FGoKartMove Move)
 
 bool UGoKartMovementReplicator::Server_SendMove_Validate(FGoKartMove Move)
 {
-	return true;   // TODO: make validation better
+	float RequestedTime = ClientSimulatedTime + Move.DeltaTime;
+	bool ValidTime = RequestedTime < GetWorld()->TimeSeconds;
+	if (!ValidTime)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Client time is ahead of host!"))
+		return false;
+	}
+	if (!Move.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Client movement invalid!"))
+		return false;
+	}
+	
+	return true;
 }
+
