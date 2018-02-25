@@ -39,6 +39,12 @@ private:
 
 	void MoveRight(float Value);
 
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_MoveForward(float Value);
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_MoveRight(float Value);
+
 	// Higher means more rolling resistance
 	UPROPERTY(EditAnywhere)
 	float RollingResistanceCoefficient = 0.015;
@@ -47,9 +53,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	float DragCoefficient = 16;
 
-	// The number of degrees rotated per second at full control throw (degrees/s)
+	// Minimum radius of the car turning circle at full lock (m).
 	UPROPERTY(EditAnywhere)
-	float MaxDegreesPerSecond = 90;
+	float MinTurningRadius = 10;
 
 	// Mass of car in (Kilograms)
 	UPROPERTY(EditAnywhere)
