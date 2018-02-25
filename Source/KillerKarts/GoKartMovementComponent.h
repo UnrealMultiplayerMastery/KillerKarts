@@ -12,17 +12,17 @@ struct FGoKartMove
 {
 	GENERATED_USTRUCT_BODY()
 
-		UPROPERTY()
-		float Throttle;
+	UPROPERTY()
+	float Throttle;
 
 	UPROPERTY()
-		float SteeringThrow;
+	float SteeringThrow;
 
 	UPROPERTY()
-		float DeltaTime;
+	float DeltaTime;
 
 	UPROPERTY()
-		float Time;
+	float Time;
 };
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
