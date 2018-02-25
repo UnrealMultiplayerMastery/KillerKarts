@@ -29,6 +29,15 @@ void AGoKart::BeginPlay()
 	}
 }
 
+// Called to bind functionality to input
+void AGoKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	PlayerInputComponent->BindAxis("MoveForward", this, &AGoKart::MoveForward);
+	PlayerInputComponent->BindAxis("MoveRight", this, &AGoKart::MoveRight);
+}
+
 void AGoKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -59,11 +68,12 @@ void AGoKart::Tick(float DeltaTime)
 
 	if (IsLocallyControlled())
 	{
-		FGoKartMove Move;
-		Move.DeltaTime = DeltaTime;
-		Move.SteeringThrow = SteeringThrow;
-		Move.Throttle = Throttle;
-		//TODO: set time
+		FGoKartMove Move = CreateMove(DeltaTime);
+
+		if (!HasAuthority())
+		{
+			UnacknowledgedMoves.Add(Move);
+		}
 
 		Server_SendMove(Move);
 		SimulateMove(Move);
@@ -72,16 +82,7 @@ void AGoKart::Tick(float DeltaTime)
 	DrawDebugString(GetWorld(), FVector(0, 0, 100), GetEnumText(Role), this, FColor::White, DeltaTime);
 }
 
-// Called to bind functionality to input
-void AGoKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	PlayerInputComponent->BindAxis("MoveForward", this, &AGoKart::MoveForward);
-	PlayerInputComponent->BindAxis("MoveRight", this, &AGoKart::MoveRight);
-}
-
-void AGoKart::SimulateMove(FGoKartMove Move)
+void AGoKart::SimulateMove(const FGoKartMove& Move)
 {
 	FVector Force = GetActorForwardVector() * MaxDrivingForce * Move.Throttle;
 
@@ -95,6 +96,45 @@ void AGoKart::SimulateMove(FGoKartMove Move)
 	ApplyRotation(Move.DeltaTime, Move.SteeringThrow);
 
 	UpdateLocationFromVelocity(Move.DeltaTime);
+}
+
+void AGoKart::ClearAcknowledgeMoves(FGoKartMove LastMove)
+{
+	TArray<FGoKartMove> NewMoves;
+
+	for (const FGoKartMove& Move : UnacknowledgedMoves)
+	{
+		if (Move.Time > LastMove.Time)
+		{
+			NewMoves.Add(Move);
+		}
+	}
+
+	UnacknowledgedMoves = NewMoves;
+}
+
+void AGoKart::OnRep_ServerState()
+{
+	// Reset to server state
+	SetActorTransform(ServerState.Tranform);
+	Velocity = ServerState.Velocity;
+	ClearAcknowledgeMoves(ServerState.LastMove);
+
+	for (const FGoKartMove& Move : UnacknowledgedMoves)
+	{
+		SimulateMove(Move);
+	}
+}
+
+FGoKartMove AGoKart::CreateMove(float DeltaTime)
+{
+	FGoKartMove Move;
+	Move.DeltaTime = DeltaTime;
+	Move.SteeringThrow = SteeringThrow;
+	Move.Throttle = Throttle;
+	Move.Time = GetWorld()->TimeSeconds;
+
+	return Move;
 }
 
 FVector AGoKart::GetAirResistance()
@@ -140,13 +180,6 @@ void AGoKart::MoveForward(float Value)
 void AGoKart::MoveRight(float Value)
 {
 	SteeringThrow = Value;
-}
-
-void AGoKart::OnRep_ServerState()
-{	
-	// Reset to server state
-	SetActorTransform(ServerState.Tranform);
-	Velocity = ServerState.Velocity;
 }
 
 void AGoKart::Server_SendMove_Implementation(FGoKartMove Move)
